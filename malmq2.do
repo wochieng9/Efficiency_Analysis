@@ -212,7 +212,89 @@ restore
 
 
 /*****************************************************************************
-3. EVALUATE ORIGINAL TARGETS AGAINST A SPECIFIED REFERENCE PANEL
+3. SELF-CONTAINED SHEPHARD DISTANCE HELPER
+
+The malmq2 source defines shepdf as an internal subprogram. Calling that
+private name directly is not reliable because Stata may not leave it visible
+to a separate do-file. This local helper reproduces the same distance-function
+call but has a unique name owned by this analysis.
+
+The Mata functions sdf_o() and sdf_i() are supplied by malmq2. In each model,
+malmq2 is run for the point estimates before this helper is called, which loads
+and compiles those Mata functions.
+*****************************************************************************/
+
+capture program drop county_shepdf
+program define county_shepdf
+
+    version 16.0
+
+    syntax [if] [in], ///
+        GEN(string) ///
+        INvars(varlist numeric) ///
+        OPvars(varlist numeric) ///
+        RFLAG(varname numeric) ///
+        [ORT(string) VRS MAXiter(numlist integer >0 max=1) ///
+         TOL(numlist max=1 >0)]
+
+    marksample touse
+    markout `touse' `invars' `opvars'
+
+    tempvar touse_ref
+    quietly generate byte `touse_ref' = (`rflag' != 0)
+    markout `touse_ref' `invars' `opvars'
+
+    quietly generate double `gen' = .
+
+    local common : list invars & opvars
+    if "`common'" != "" {
+        display as error ///
+            "The following variables were specified as both inputs and outputs: `common'"
+        exit 498
+    }
+
+    local data `invars' `opvars'
+    local ninputs : word count `invars'
+
+    if "`ort'" == "" {
+        local ort "IN"
+    }
+    else {
+        local ort = upper("`ort'")
+
+        if inlist("`ort'", "I", "IN", "INPUT") {
+            local ort "IN"
+        }
+        else if inlist("`ort'", "O", "OUT", "OUTPUT") {
+            local ort "OUT"
+        }
+        else {
+            display as error ///
+                "ort() must be i, in, input, o, out, or output"
+            exit 198
+        }
+    }
+
+    local rts = cond("`vrs'" != "", 1, 0)
+
+    if "`maxiter'" == "" local maxiter -1
+    if "`tol'"     == "" local tol -1
+
+    if "`ort'" == "OUT" {
+        mata: sdf_o("`data'", "`touse'", "`touse_ref'", ///
+            `ninputs', `rts', "`gen'", `maxiter', `tol')
+        quietly replace `gen' = 1/`gen' if `touse'
+    }
+    else {
+        mata: sdf_i("`data'", "`touse'", "`touse_ref'", ///
+            `ninputs', `rts', "`gen'", `maxiter', `tol')
+    }
+
+end
+
+
+/*****************************************************************************
+4. EVALUATE ORIGINAL TARGETS AGAINST A SPECIFIED REFERENCE PANEL
 
 This program reproduces the FGNZ calculations used by malmq2, while allowing
 separate target observations and reference observations. That separation is
@@ -270,7 +352,7 @@ program define fgnz_against_reference
         replace __rflag = (__reference == 1 & year == `yy')
 
         tempvar dsame
-        quietly shepdf if __target == 1 & year == `yy', ///
+        quietly county_shepdf if __target == 1 & year == `yy', ///
             gen(`dsame') ///
             invars(`inputs') ///
             opvars(`outputs') ///
@@ -286,7 +368,7 @@ program define fgnz_against_reference
         replace __rflag = (__reference == 1 & year == `other')
 
         tempvar dcross
-        quietly shepdf if __target == 1 & year == `yy', ///
+        quietly county_shepdf if __target == 1 & year == `yy', ///
             gen(`dcross') ///
             invars(`inputs') ///
             opvars(`outputs') ///
@@ -302,7 +384,7 @@ program define fgnz_against_reference
         replace __rflag = (__reference == 1 & year == `yy')
 
         tempvar dvrs
-        quietly shepdf if __target == 1 & year == `yy', ///
+        quietly county_shepdf if __target == 1 & year == `yy', ///
             gen(`dvrs') ///
             invars(`inputs') ///
             opvars(`outputs') ///
