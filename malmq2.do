@@ -501,10 +501,8 @@ program define malmq_county_ci
         }
         sort county_id
     }
-    frame create PAIRSLONG
-    frame PAIRSLONG {
-        frame PAIRS: frame put county_id D2014 D2022, into(PAIRSLONG)
-    }
+    * frame put ... into() CREATES PAIRSLONG; do NOT frame create it first.
+    frame PAIRS: frame put county_id D2014 D2022, into(PAIRSLONG)
     frame PAIRSLONG {
         rename D2014 dcrs2014
         rename D2022 dcrs2022
@@ -595,19 +593,15 @@ program define malmq_county_ci
     set seed `seed'
     forvalues a = 1/`maxattempts' {
         capture frame drop _D
-        frame create _D
-        frame _D {
-            frame PAIRS: frame put D2014 D2022, into(_D)
-        }
+        frame PAIRS: frame put D2014 D2022, into(_D)
         frame _D {
             bsample 47
             rename D2014 donor2014
             rename D2022 donor2022
             generate long target_order = _n
             * attach fixed county order (PAIRS sorted by county_id)
-            frame PAIRS {
-                frame put county_id, into(_ORD)
-            }
+            capture frame drop _ORD
+            frame PAIRS: frame put county_id, into(_ORD)
             frame _ORD {
                 sort county_id
                 generate long target_order = _n
@@ -671,16 +665,11 @@ program define malmq_county_ci
 
         * ---- FAST: build pseudo-reference from stored dstar (attempt a) ----
         capture frame drop REF
-        frame create REF
-        frame REF {
-            frame REFBASE: frame put county_id year `inputs' origout_* dcrs, into(REF)
-        }
+        frame REFBASE: frame put county_id year `inputs' origout_* dcrs, into(REF)
         local good 1
         frame REF {
-            frame create _DA
-            frame _DA {
-                frame DRAWS: frame put county_id year dstar if attempt==`a', into(_DA)
-            }
+            capture frame drop _DA
+            frame DRAWS: frame put county_id year dstar if attempt==`a', into(_DA)
             frlink 1:1 county_id year, frame(_DA)
             generate double dstar = frval(_DA, dstar)
             drop _DA
@@ -703,10 +692,7 @@ program define malmq_county_ci
 
         if `good' {
             capture frame drop WORK
-            frame create WORK
-            frame WORK {
-                frame TARGETBLOCK: frame put county_id year `inputs' `outputs' __target __reference, into(WORK)
-            }
+            frame TARGETBLOCK: frame put county_id year `inputs' `outputs' __target __reference, into(WORK)
             frame REF { frameappend_to WORK }
             frame WORK: capture noisily fgnz_core_frames, inputs(`inputs') outputs(`outputs')
             if _rc local good 0
@@ -732,10 +718,8 @@ program define malmq_county_ci
             frame create _PR
             frame _PR {
                 use "`modelpanel'", clear
-                frame create _DA2
-                frame _DA2 {
-                    frame DRAWS: frame put county_id year dstar if attempt==`a', into(_DA2)
-                }
+                capture frame drop _DA2
+                frame DRAWS: frame put county_id year dstar if attempt==`a', into(_DA2)
                 frlink 1:1 county_id year, frame(_DA2)
                 generate double dstar = frval(_DA2, dstar)
                 drop _DA2
